@@ -21,14 +21,14 @@ except ImportError:
 
 def get_website(url):
     command = "phantomjs --ignore-ssl-errors=true website.js \"" + url + "\" 3 website.jpg"
-    return json.loads(subprocess.check_output(command, shell=True, stderr=subprocess.PIPE, timeout=30)
+    return json.loads(subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT, timeout=30)
                       .decode("utf-8"))
 
 
 def get_links(file, search):
     command = "phantomjs " + file + " \"" + search + "\" 10"
     try:
-        return json.loads(subprocess.check_output(command, shell=True, stderr=subprocess.PIPE, timeout=20)
+        return json.loads(subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT, timeout=20)
                           .decode("utf-8"))
     except (ValueError, subprocess.TimeoutExpired):
         return []
@@ -72,7 +72,7 @@ def get_cert_info(uri):
     command = "openssl s_client -showcerts -verify_return_error -servername " + host + " -connect " \
               + host + ":" + str(port) + " < /dev/null"
     try:
-        result = subprocess.check_output(command, shell=True, stderr=subprocess.PIPE, timeout=3).decode("utf-8")
+        result = subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT, timeout=3).decode("utf-8")
     except subprocess.TimeoutExpired:
         return None
     verify_pattern = re.compile(r"Verify return code: (\d+ \(.*\))$", re.MULTILINE)
@@ -131,7 +131,7 @@ def get_response(url, screenshotname):
     print("download " + url)
     command = "phantomjs content.js \"" + url + "\" " + screenshotname
     try:
-        result = json.loads(subprocess.check_output(command, shell=True, stderr=subprocess.PIPE, timeout=10)
+        result = json.loads(subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT, timeout=10)
                             .decode("utf-8"))
         result['url'] = url
         return result
@@ -147,9 +147,8 @@ def compare_responses_to_website(website, responses):
         command = "nodejs compare.js " + website['screenshot'] + " " + response['screenshot'] + " " \
                   + response['comparison']
         try:
-            response['screenshot_ratio'] = float(json.loads(
-                subprocess.check_output(command, shell=True,
-                                        stderr=subprocess.PIPE, timeout=20).decode("utf-8")))
+            response['screenshot_ratio'] = float(
+                subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT, timeout=20).decode("utf-8"))
         except ValueError:
             response['screenshot_ratio'] = (response['html_ratio'] + response['content_ratio']) / 2
         ratio, result = calculate_result(response)
@@ -159,13 +158,18 @@ def compare_responses_to_website(website, responses):
 
 
 def calculate_result(response):
-    ratio = (response['screenshot_ratio'] * 2 + response['html_ratio'] + response['content_ratio']) / 4
+    ratio = (response['screenshot_ratio'] * 3 + response['html_ratio'] + response['content_ratio']) / 5
+    print(response['url'])
+    print(response['screenshot_ratio'])
+    print(response['html_ratio'])
+    print(response['content_ratio'])
+    print(ratio)
     result = 'CLEAN'
-    if ratio > 0.85 or (ratio > 0.78 and (response['screenshot_ratio'] > 0.9
-                                          or response['html_ratio'] > 0.92 or response["content_ratio"] > 0.95)):
+    if ratio > 0.8 or (ratio > 0.7 and (response['screenshot_ratio'] > 0.9
+                                        or response['html_ratio'] > 0.92 or response["content_ratio"] > 0.95)):
         result = 'SUSPICIOUS'
-    if ratio > 0.95 or (ratio > 0.83 and (response['screenshot_ratio'] > 0.96
-                                          or response['html_ratio'] > 0.97 or response["content_ratio"] > 0.98)):
+    if ratio > 0.93 or (ratio > 0.8 and (response['screenshot_ratio'] > 0.95
+                                         or response['html_ratio'] > 0.96 or response["content_ratio"] > 0.98)):
         result = 'MALICIOUS'
 
     return ratio, result
@@ -180,7 +184,8 @@ def format_result(website, responses):
                 result = 'MALICIOUS'
             elif result == 'CLEAN':
                 result = 'SUSPICIOUS'
-            comparison = "data:image/jpg;base64," + base64.b64encode(open(response['comparison']).read())
+            with open(response['comparison'], "rb") as image_file:
+                comparison = 'data:image/jpg;base64,' + base64.b64encode(image_file.read()).decode("utf-8")
             matches.append({
                 'url': response['url'],
                 'result': response['result'],
