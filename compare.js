@@ -7,7 +7,7 @@ if (args.length != 3) {
     return;
 }
 
-resemble(args[0]).compareTo(args[1]).onComplete(function (data) {
+resemble(args[0]).compareTo(args[1]).ignoreNothing().onComplete(function (data) {
     fs.writeFileSync(args[2], data.getDiffImageAsJPEG());
     var result = (100 - data.misMatchPercentage) / 100;
     console.log(result);
