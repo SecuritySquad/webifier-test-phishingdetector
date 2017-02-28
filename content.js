@@ -19,7 +19,9 @@ if (system.args.length === 1) {
         } else {
             page.render(page.screenshot);
             var content = page.content.replace(/<style.*?>[\S\s]+<\/style>|<script.*?>[\S\s]+?<\/script>|<\/?[^>]+(>|$)|['".:,;()\[\]{}|=]/g, "");
-            var words = content.match(/\S+/g);
+            var words = content.split(/\s+/g).filter(function (word) {
+                return word != undefined && word.length > 0;
+            });
             var result = {
                 "screenshot": page.screenshot,
                 "content": words.join(' '),

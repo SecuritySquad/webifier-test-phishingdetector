@@ -1,28 +1,36 @@
 #!/usr/bin/python
 import base64
 import difflib
-import urllib2
+
+try:
+    import urllib.request as urllib2
+except ImportError:
+    import urllib2
 import sys
 import json
 import re
 import socket
 import subprocess
 import tldextract
-from urlparse import urlparse
+
+try:
+    from urllib.parse import urlparse
+except ImportError:
+    from urlparse import urlparse
 
 
 def get_website(url):
-    command = "phantomjs --ignore-ssl-errors=true website.js \"" + url + "\" 3 website.png"
-    proc = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return json.loads(proc.stdout.read())
+    command = "phantomjs --ignore-ssl-errors=true website.js \"" + url + "\" 3 website.jpg"
+    return json.loads(subprocess.check_output(command, shell=True, stderr=subprocess.PIPE, timeout=30)
+                      .decode("utf-8"))
 
 
 def get_links(file, search):
     command = "phantomjs " + file + " \"" + search + "\" 10"
-    proc = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     try:
-        return json.loads(proc.stdout.read())
-    except ValueError:
+        return json.loads(subprocess.check_output(command, shell=True, stderr=subprocess.PIPE, timeout=20)
+                          .decode("utf-8"))
+    except (ValueError, subprocess.TimeoutExpired):
         return []
 
 
@@ -63,8 +71,10 @@ def get_cert_info(uri):
         port = 443
     command = "openssl s_client -showcerts -verify_return_error -servername " + host + " -connect " \
               + host + ":" + str(port) + " < /dev/null"
-    proc = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    result = proc.stdout.read()
+    try:
+        result = subprocess.check_output(command, shell=True, stderr=subprocess.PIPE, timeout=3).decode("utf-8")
+    except subprocess.TimeoutExpired:
+        return None
     verify_pattern = re.compile(r"Verify return code: (\d+ \(.*\))$", re.MULTILINE)
     verify_match = verify_pattern.search(result)
     if not verify_match:
@@ -105,26 +115,27 @@ def get_and_evaluate_links(search, url):
     add_links(links, get_links("ixquick.js", search))
     add_links(links, get_links("bing.js", search))
     links.sort(key=lambda link: link["count"], reverse=True)
-    return map(lambda item: item["link"], filter_original_links(links[:25], url))
+    return list(map(lambda item: item["link"], filter_original_links(links[:25], url)))
 
 
 def get_responses_for_links(links):
     responses = []
     for index, url in enumerate(links):
-        response = get_response(url, "screenshot" + str(index) + ".png")
+        response = get_response(url, "screenshot" + str(index) + ".jpg")
         if response is not None:
             responses.append(response)
     return responses
 
 
 def get_response(url, screenshotname):
+    print("download " + url)
     command = "phantomjs content.js \"" + url + "\" " + screenshotname
-    proc = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     try:
-        result = json.loads(proc.stdout.read())
+        result = json.loads(subprocess.check_output(command, shell=True, stderr=subprocess.PIPE, timeout=10)
+                            .decode("utf-8"))
         result['url'] = url
         return result
-    except ValueError:
+    except (ValueError, subprocess.TimeoutExpired):
         return None
 
 
@@ -135,9 +146,10 @@ def compare_responses_to_website(website, responses):
         response['comparison'] = "compare" + str(index) + ".jpg"
         command = "nodejs compare.js " + website['screenshot'] + " " + response['screenshot'] + " " \
                   + response['comparison']
-        proc = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
-            response['screenshot_ratio'] = float(proc.stdout.read())
+            response['screenshot_ratio'] = float(json.loads(
+                subprocess.check_output(command, shell=True,
+                                        stderr=subprocess.PIPE, timeout=20).decode("utf-8")))
         except ValueError:
             response['screenshot_ratio'] = (response['html_ratio'] + response['content_ratio']) / 2
         ratio, result = calculate_result(response)
@@ -150,7 +162,7 @@ def calculate_result(response):
     ratio = (response['screenshot_ratio'] * 2 + response['html_ratio'] + response['content_ratio']) / 4
     result = 'CLEAN'
     if ratio > 0.85 or (ratio > 0.78 and (response['screenshot_ratio'] > 0.9
-                                         or response['html_ratio'] > 0.92 or response["content_ratio"] > 0.95)):
+                                          or response['html_ratio'] > 0.92 or response["content_ratio"] > 0.95)):
         result = 'SUSPICIOUS'
     if ratio > 0.95 or (ratio > 0.83 and (response['screenshot_ratio'] > 0.96
                                           or response['html_ratio'] > 0.97 or response["content_ratio"] > 0.98)):
@@ -182,7 +194,7 @@ def format_result(website, responses):
     return {
         "result": result,
         "info": {
-            "keywords": map(lambda keyword: keyword['name'], website['keywords']),
+            "keywords": list(map(lambda keyword: keyword['name'], website['keywords'])),
             "matches": matches
         }
     }
@@ -195,13 +207,15 @@ if __name__ == "__main__":
         website = get_website(url)
         search = "+".join(keyword['name'] for keyword in website['keywords'])
         if len(search) > 0:
-            print "search for " + search
+            print("search for " + search)
             links = get_and_evaluate_links(search, url)
+            print("found " + str(len(links)) + " possible websites that could match")
 
             responses = get_responses_for_links(links)
+            print("downloaded " + str(len(responses)) + " of them")
             compare_responses_to_website(website, responses)
-            print '{}: {}'.format(prefix, json.dumps(format_result(website, responses)))
+            print('{}: {}'.format(prefix, json.dumps(format_result(website, responses))))
         else:
-            print "no keywords found!"
+            print("no keywords found!")
     else:
-        print "prefix or url missing"
+        print("prefix or url missing")

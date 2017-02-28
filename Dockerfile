@@ -15,8 +15,8 @@ RUN apt-get update \
  && ln -sf /usr/local/share/$PHANTOM_JS/bin/phantomjs /usr/local/bin
 
 #PYTHON
-RUN apt-get -y install python python-pip \
- && pip install tldextract
+RUN apt-get -y install python3 python3-pip \
+ && pip3 install tldextract
 
 COPY check.py /
 COPY website.js /
@@ -28,4 +28,4 @@ COPY compare.js /
 
 COPY node_modules /node_modules/
 
-CMD python check.py $ID $URL
+CMD python3 check.py $ID $URL
