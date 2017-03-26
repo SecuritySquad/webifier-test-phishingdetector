@@ -22,7 +22,7 @@ if (system.args.length === 1) {
             phantom.exit(1);
         } else {
             page.render(page.screenshot);
-            var content = page.content.replace(/<style.*?>[\S\s].<\/style>|<(no)?script.*?>[\S\s].?<\/(no)?script>|<\/?[^>]+(>|$)|['".:,;()\[\]{}|=]/gm, " ");
+            var content = page.content.replace(/<style.*?>[\S\s]*?<\/style>|<(no)?script.*?>[\S\s]*?<\/(no)?script>|<\/?[^>]+(>|$)|['".:,;()\[\]{}|=]/gm, " ");
             var words = content.split(/\s/g).filter(function (word) {
                 return word != undefined && word.length > 0;
             });
